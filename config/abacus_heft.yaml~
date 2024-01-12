@@ -1,0 +1,26 @@
+# Comment out the probes you don't need
+# CAREFUL: yaml is super sensitive to spaces - don't use tabs
+
+# Simulation parameters
+sim_params:
+    sim_name: 'AbacusSummit_base_c000_ph000'  # which simulation
+    z_mock: 0.800               # which redshift slice 
+
+heft_params:
+    heft_dir: "/pscratch/sd/b/boryanah/heft_scratch/"
+    sim_dir: "/global/cfs/projectdirs/desi/cosmosim/Abacus/"
+    ic_dir: "/global/cfs/projectdirs/desi/cosmosim/Abacus/ic/"
+    nmesh: 576 #1152
+    kcut: 0. #0.9047786842338604
+    fields: ["1cb", "delta", "delta2", "tidal2", "nabla2"]
+
+power_params:
+    nbins_k: 576 # nmesh/2
+    nbins_mu: 1 # TODO: maybe make skippable
+    poles: [0, 2, 4]
+    k_hMpc_max: 1.8095573684677209
+    paste: 'TSC'
+    compensated: True
+    interlaced: True
+    logk: False # linear or logarithmic bins
+    nmesh: 1152 # used for computing the power spectrum (I think should match heft)
