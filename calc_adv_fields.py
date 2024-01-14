@@ -62,14 +62,15 @@ def main(path2config, alt_simname=None, verbose=False):
     # all particle files
     pcle_fns = sorted(pcle_dir.glob(f"pcle_info_*.asdf"))
     n_chunks = len(pcle_fns)
-    print(n_chunks)
+    print("number of chunks =", n_chunks)
 
     # get a few parameters for the simulation
     meta = get_meta(sim_name, redshift=0.5)
     Lbox = meta['BoxSize']
     z_ic = meta['InitialRedshift']
     D_growth = meta['GrowthTable'][z_mock]/meta['GrowthTable'][z_ic]
-
+    print("D_growth", D_growth)
+    
     # file to save the advected fields
     adv_fields_fn = Path(save_dir) / f"adv_fields_nmesh{nmesh:d}.asdf"
     
@@ -82,38 +83,41 @@ def main(path2config, alt_simname=None, verbose=False):
     for field in factors_fields.keys():
         adv_fields[field] = np.zeros((nmesh, nmesh, nmesh), dtype=np.float32)
     adv_fields['1cb'] = np.zeros((nmesh, nmesh, nmesh), dtype=np.float32)
-        
+    
     # loop over all files
     for i_chunk, pcle_fn in enumerate(pcle_fns):
         print(i_chunk)
         
         # load particle in this chunk
         data = asdf.open(pcle_fn)['data']
-        lagr_pos = data['pos_lagr']
-        pcle_pos = data['pos_pcle']
+        for part_type in ['halo', 'field']:
+            lagr_pos = np.array(data[f'{part_type}_pos_lagr'][:])
+            pcle_pos = np.array(data[f'{part_type}_pos_pcle'][:])
+            print(lagr_pos[:2], lagr_pos.min(), lagr_pos.max())
+            
+            # get i, j, k for position on the density array
+            lagr_ijk = ((lagr_pos+Lbox/2.)/(Lbox/nmesh)).astype(int)%nmesh # better than without L/2
+            del lagr_pos
 
-        # get i, j, k for position on the density array
-        lagr_ijk = ((lagr_pos+Lbox/2.)/(Lbox/nmesh)).astype(int)%nmesh
-        del lagr_pos
+            # loop over fields
+            for field in factors_fields.keys():
+                # get weight # TODO could speed up by sorting I think
+                w = (f['data'][field]*D_growth**factors_fields[field])[lagr_ijk[:,0], lagr_ijk[:,1], lagr_ijk[:,2]]
 
-        # loop over fields
-        for field in factors_fields.keys():
-            # get weight
-            w = (f['data'][field]*D_growth**factors_fields[field])[lagr_ijk[:,0], lagr_ijk[:,1], lagr_ijk[:,2]]
+                # add to field (it doesn't modify the pcle_pos array)
+                if paste == "TSC":
+                    tsc_parallel(pcle_pos, adv_fields[field], Lbox, weights=w)
+                del w
+                gc.collect()
 
             # add to field
             if paste == "TSC":
-                tsc_parallel(pcle_pos, adv_fields[field], Lbox, weights=w)
-            del w
-            gc.collect()
+                tsc_parallel(pcle_pos, adv_fields['1cb'], Lbox, weights=None)
             
-        # add to field
-        if paste == "TSC":
-            tsc_parallel(pcle_pos, adv_fields['1cb'], Lbox, weights=None)
-
-        # TODO! compensated and interlaced
-        del pcle_pos
-        gc.collect()
+            # TODO! compensated and interlaced
+            del pcle_pos, lagr_ijk
+            gc.collect()
+            print(part_type)
         
     # save fields using asdf compression
     header = {}
@@ -137,7 +141,7 @@ def main(path2config, alt_simname=None, verbose=False):
               #'wa', 'w0',
     ):
         cosmo[k] = meta[k]
-
+                
     # load input linear power
     kth = meta['CLASS_power_spectrum']['k (h/Mpc)']
     pk_z1 = meta['CLASS_power_spectrum']['P (Mpc/h)^3']
